@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "mcp-apps-builder": {
+      "source": "mcp-use/mcp-use",
+      "sourceType": "github",
+      "computedHash": "5e73dad920a7f583f1bd37dedd26d1a80477172d23993a2480e9f17af7c97c16"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "computedHash": "b122f4d1e91aa1d83027e050b5b37c3156203ee85458d7b1360bc48167c9e02a"
+    }
+  }
+}
