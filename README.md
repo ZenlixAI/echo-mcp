@@ -1,28 +1,360 @@
-# MCP Server built with mcp-use
+# Echo MCP
 
-This is an MCP server project bootstrapped with [`create-mcp-use-app`](https://mcp-use.com/docs/typescript/getting-started/quickstart).
+A lightweight MCP (Model Context Protocol) server that enables Agents to emit structured messages through MCP tool call returns.
 
-## Getting Started
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![MCP](https://img.shields.io/badge/MCP-Protocol-green.svg)](https://modelcontextprotocol.io/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-First, run the development server:
+[English](README.md) | [中文](README-zh.md)
+
+---
+
+## Table of Contents
+
+- [Background](#background)
+- [What is Echo MCP](#what-is-echo-mcp)
+- [Key Design Decisions](#key-design-decisions)
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+- [Examples](#examples)
+- [Project Structure](#project-structure)
+
+---
+
+## Background
+
+In existing Agent systems, Agents typically communicate intermediate states, stage information, report outlines, and structured results only through natural language text. This creates several challenges:
+
+1. **Clients struggle to extract specific structured data reliably**
+2. **Same-type data lacks unified schema and validation**
+3. **Business applications must extend SDKs or protocol layers to consume these messages**
+4. **Programmatic consumption of Agent outputs is unreliable with just natural language or loose JSON**
+
+**Echo MCP** solves this problem by providing a mechanism to carry structured messages via MCP tool call returns — without modifying the underlying ACP/SDK protocols.
+
+---
+
+## What is Echo MCP
+
+Echo MCP is a **structured message carrier and validation toolkit** that provides three core capabilities:
+
+1. **Schema Registry** — Register session-level schemas
+2. **Schema Discovery** — Query available schemas in the current session
+3. **Echo/Emit** — Receive payloads, validate against specified schemas, and return unchanged
+
+### What Echo MCP IS NOT
+
+- ❌ A business workflow engine
+- ❌ An event bus
+- ❌ A rendering layer protocol
+- ❌ A permission management system
+- ❌ A state management framework
+
+It only provides low-level capabilities without business-layer restrictions.
+
+---
+
+## Key Design Decisions
+
+### 1. MCP Tool Return as Message Carrier
+
+**Echo MCP's output is the MCP tool call return value.**
+
+- No dependency on side-effect stream items
+- No additional protocol extensions required for clients
+- Clients only need to observe tool returns
+
+### 2. Input Schema = Output Schema
+
+Echo MCP receives valid payloads and returns them unchanged:
+
+- Input schema = Output schema
+- No payload transformation, normalization, or field injection
+- **"Echo" means exact reproduction**
+
+### 3. Session-Scoped Schemas
+
+- Schema IDs are **unique within a session only**
+- Schema registration, discovery, and lifecycle are bounded by session
+- No cross-session schema sharing
+
+### 4. No Schema Versioning
+
+If a schema changes, use a new schema ID. No explicit version fields or migration mechanisms.
+
+### 5. Built-in Schemaless Mode
+
+A built-in `__schemaless__` schema ID allows unvalidated structured output:
+
+- Useful for quick experiments, debugging, or coarse-grained structured output
+- Request envelope is still validated
+
+### 6. Append Semantics (Not Update)
+
+Echo MCP is designed for **appending new structured messages**, not updating previous ones.
+
+If your business needs "updates", include identifiers in the payload (e.g., `entity_id`, `sequence`, `revision`) and let the client fold multiple append messages into the "current state".
+
+### 7. Validation: JSON Schema (External) + Zod (Internal)
+
+- **External schema expression:** JSON Schema (for discovery, exchange, cross-language compatibility)
+- **Internal runtime validation:** Zod (for TypeScript/Node.js execution efficiency)
+
+### 8. Structured Error Responses
+
+All errors return machine-readable error codes with detailed field-level information:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "SCHEMA_VALIDATION_FAILED",
+    "message": "Payload does not conform to schema...",
+    "schema_id": "report_outline_v1",
+    "details": [
+      { "path": "/items/0/index", "message": "Expected integer, received string" }
+    ]
+  }
+}
+```
+
+---
+
+## Quick Start
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/zenlix/echo-mcp.git
+cd echo-mcp
+
+# Install dependencies (requires pnpm)
 pnpm install
+```
+
+### Development Mode
+
+```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000/inspector](http://localhost:3000/inspector) with your browser to test your server.
+The server runs on `http://localhost:3000` by default.
 
-You can start building by editing the entry file. Add tools, resources, and prompts — the server auto-reloads as you edit.
+Open [http://localhost:3000/inspector](http://localhost:3000/inspector) in your browser to test the server interactively.
 
-## Learn More
+### Build for Production
 
-To learn more about mcp-use and MCP:
+```bash
+pnpm build
+```
 
-- [mcp-use Documentation](https://mcp-use.com/docs/typescript/getting-started/quickstart) — guides, API reference, and tutorials
+### Run Tests
 
-## Deploy on Manufact Cloud
+```bash
+pnpm test
+```
+
+### Deploy
 
 ```bash
 pnpm deploy
 ```
+
+---
+
+## API Reference
+
+Echo MCP exposes 4 MCP tools:
+
+### `register_schema`
+
+Register a JSON Schema in the current session for later validation.
+
+**Input:**
+```json
+{
+  "schema_id": "report_outline_v1",
+  "description": "Ordered outline for a report",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string" },
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "index": { "type": "integer" },
+            "heading": { "type": "string" }
+          },
+          "required": ["index", "heading"]
+        }
+      }
+    },
+    "required": ["title", "items"]
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "ok": true,
+  "schema_id": "report_outline_v1",
+  "description": "Ordered outline for a report"
+}
+```
+
+### `list_schemas`
+
+List all schemas available in the current session (including built-in `__schemaless__`).
+
+**Input:** `{}`
+
+**Output:**
+```json
+{
+  "schemas": [
+    { "schema_id": "__schemaless__", "description": "...", "builtin": true },
+    { "schema_id": "report_outline_v1", "description": "...", "builtin": false }
+  ]
+}
+```
+
+### `get_schema`
+
+Fetch the full definition of a specific schema.
+
+**Input:** `{"schema_id": "report_outline_v1"}`
+
+**Output:** Schema details including the full JSON Schema definition.
+
+### `echo`
+
+Validate a payload against a schema and return it unchanged.
+
+**Input:**
+```json
+{
+  "schema_id": "report_outline_v1",
+  "payload": {
+    "title": "Q2 Review",
+    "items": [
+      { "index": 1, "heading": "Executive Summary" }
+    ]
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "ok": true,
+  "schema_id": "report_outline_v1",
+  "payload": {
+    "title": "Q2 Review",
+    "items": [
+      { "index": 1, "heading": "Executive Summary" }
+    ]
+  }
+}
+```
+
+---
+
+## Examples
+
+### Example 1: Workflow Stage Notifications
+
+**Register schema:**
+```json
+{
+  "schema_id": "workflow_stage_v1",
+  "description": "Workflow stage notification",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "event_type": { "type": "string" },
+      "stage": { "type": "string" },
+      "message": { "type": "string" },
+      "sequence": { "type": "integer" }
+    },
+    "required": ["event_type", "stage", "sequence"]
+  }
+}
+```
+
+**Emit stage updates:**
+```json
+{
+  "schema_id": "workflow_stage_v1",
+  "payload": {
+    "event_type": "analysis_started",
+    "stage": "analysis",
+    "message": "Agent started analyzing the task.",
+    "sequence": 1
+  }
+}
+```
+
+### Example 2: Report Outline
+
+```json
+{
+  "schema_id": "report_outline_v1",
+  "payload": {
+    "title": "Quarterly Business Review",
+    "items": [
+      { "index": 1, "heading": "Executive Summary" },
+      { "index": 2, "heading": "Financial Highlights" },
+      { "index": 3, "heading": "Next Steps" }
+    ]
+  }
+}
+```
+
+### Example 3: Schemaless Output (Quick Debug)
+
+```json
+{
+  "schema_id": "__schemaless__",
+  "payload": {
+    "kind": "debug_snapshot",
+    "raw": { "step": "retrieval_done", "hits": 12 }
+  }
+}
+```
+
+---
+
+## Project Structure
+
+```
+zenlix-echo-mcp/
+├── index.ts              # Process entry point
+├── src/
+│   ├── server.ts         # MCP server assembly and tool registration
+│   ├── echo-service.ts   # Session-scoped registry and protocol behavior
+│   └── json-schema-zod.ts # JSON Schema to Zod conversion
+├── tests/
+│   └── echo-service.test.ts  # Protocol and behavior tests
+├── docs/
+│   └── design-doc.md     # Comprehensive design documentation
+├── AGENTS.md             # AI agent navigation guide
+└── package.json
+```
+
+---
+
+## Documentation
+
+- **[Design Document](docs/design-doc.md)** — Comprehensive product and technical design
+- **[AGENTS.md](AGENTS.md)** — AI agent development guide for this repository
+
+---
+
+## License
+
+MIT © [zenlix](https://github.com/zenlix)
