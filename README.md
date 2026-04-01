@@ -307,4 +307,4 @@ zenlix-echo-mcp/
 
 ## License
 
-MIT © [zenlix](https://github.com/zenlix)
+MIT © [ZenlixAI](https://github.com/ZenlixAI)
