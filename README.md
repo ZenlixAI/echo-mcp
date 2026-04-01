@@ -39,8 +39,8 @@ In existing Agent systems, Agents typically communicate intermediate states, sta
 
 Echo MCP is a **structured message carrier and validation toolkit** that provides three core capabilities:
 
-1. **Schema Registry** — Register session-level schemas
-2. **Schema Discovery** — Query available schemas in the current session
+1. **Built-in Schema Config** — Maintain available schemas through a server-side config file
+2. **Schema Discovery** — Query available built-in schemas
 3. **Echo/Emit** — Receive payloads, validate against specified schemas, and return unchanged
 
 ### What Echo MCP IS NOT
@@ -73,11 +73,11 @@ Echo MCP receives valid payloads and returns them unchanged:
 - No payload transformation, normalization, or field injection
 - **"Echo" means exact reproduction**
 
-### 3. Session-Scoped Schemas
+### 3. Config-Driven Built-ins
 
-- Schema IDs are **unique within a session only**
-- Schema registration, discovery, and lifecycle are bounded by session
-- No cross-session schema sharing
+- Clients cannot register new schemas at runtime
+- Built-in schemas are maintained in `config/builtin-schemas.json`
+- The same built-in schema set is available to all sessions
 
 ### 4. No Schema Versioning
 
@@ -111,9 +111,9 @@ All errors return machine-readable error codes with detailed field-level informa
   "error": {
     "code": "SCHEMA_VALIDATION_FAILED",
     "message": "Payload does not conform to schema...",
-    "schema_id": "report_outline_v1",
+    "schema_id": "zenlix-agent-stage-v1",
     "details": [
-      { "path": "/items/0/index", "message": "Expected integer, received string" }
+      { "path": "/stage", "message": "must be string" }
     ]
   }
 }
@@ -166,50 +166,11 @@ pnpm deploy
 
 ## API Reference
 
-Echo MCP exposes 4 MCP tools:
-
-### `register_schema`
-
-Register a JSON Schema in the current session for later validation.
-
-**Input:**
-```json
-{
-  "schema_id": "report_outline_v1",
-  "description": "Ordered outline for a report",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "title": { "type": "string" },
-      "items": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "index": { "type": "integer" },
-            "heading": { "type": "string" }
-          },
-          "required": ["index", "heading"]
-        }
-      }
-    },
-    "required": ["title", "items"]
-  }
-}
-```
-
-**Output:**
-```json
-{
-  "ok": true,
-  "schema_id": "report_outline_v1",
-  "description": "Ordered outline for a report"
-}
-```
+Echo MCP exposes 3 MCP tools:
 
 ### `list_schemas`
 
-List all schemas available in the current session (including built-in `__schemaless__`).
+List all built-in schemas (including built-in `__schemaless__`).
 
 **Input:** `{}`
 
@@ -218,7 +179,7 @@ List all schemas available in the current session (including built-in `__schemal
 {
   "schemas": [
     { "schema_id": "__schemaless__", "description": "...", "builtin": true },
-    { "schema_id": "report_outline_v1", "description": "...", "builtin": false }
+    { "schema_id": "zenlix-agent-stage-v1", "description": "...", "builtin": true }
   ]
 }
 ```
@@ -227,7 +188,7 @@ List all schemas available in the current session (including built-in `__schemal
 
 Fetch the full definition of a specific schema.
 
-**Input:** `{"schema_id": "report_outline_v1"}`
+**Input:** `{"schema_id": "zenlix-agent-stage-v1"}`
 
 **Output:** Schema details including the full JSON Schema definition.
 
@@ -238,12 +199,14 @@ Validate a payload against a schema and return it unchanged.
 **Input:**
 ```json
 {
-  "schema_id": "report_outline_v1",
+  "schema_id": "zenlix-agent-stage-v1",
   "payload": {
-    "title": "Q2 Review",
-    "items": [
-      { "index": 1, "heading": "Executive Summary" }
-    ]
+    "stage": "authentication",
+    "stage_status": "start",
+    "next_stage": "authorization",
+    "extra": {
+      "user_id": "u_123"
+    }
   }
 }
 ```
@@ -252,12 +215,14 @@ Validate a payload against a schema and return it unchanged.
 ```json
 {
   "ok": true,
-  "schema_id": "report_outline_v1",
+  "schema_id": "zenlix-agent-stage-v1",
   "payload": {
-    "title": "Q2 Review",
-    "items": [
-      { "index": 1, "heading": "Executive Summary" }
-    ]
+    "stage": "authentication",
+    "stage_status": "start",
+    "next_stage": "authorization",
+    "extra": {
+      "user_id": "u_123"
+    }
   }
 }
 ```
@@ -268,49 +233,31 @@ Validate a payload against a schema and return it unchanged.
 
 ### Example 1: Workflow Stage Notifications
 
-**Register schema:**
-```json
-{
-  "schema_id": "workflow_stage_v1",
-  "description": "Workflow stage notification",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "event_type": { "type": "string" },
-      "stage": { "type": "string" },
-      "message": { "type": "string" },
-      "sequence": { "type": "integer" }
-    },
-    "required": ["event_type", "stage", "sequence"]
-  }
-}
-```
+`zenlix-agent-stage-v1` is defined in `config/builtin-schemas.json`.
 
 **Emit stage updates:**
 ```json
 {
-  "schema_id": "workflow_stage_v1",
+  "schema_id": "zenlix-agent-stage-v1",
   "payload": {
-    "event_type": "analysis_started",
-    "stage": "analysis",
-    "message": "Agent started analyzing the task.",
-    "sequence": 1
+    "stage": "authentication",
+    "stage_status": "running",
+    "next_stage": "authorization",
+    "extra": {
+      "user_id": "u_123",
+      "user_name": "Alice"
+    }
   }
 }
 ```
 
-### Example 2: Report Outline
+### Example 2: Minimal Stage Event
 
 ```json
 {
-  "schema_id": "report_outline_v1",
+  "schema_id": "zenlix-agent-stage-v1",
   "payload": {
-    "title": "Quarterly Business Review",
-    "items": [
-      { "index": 1, "heading": "Executive Summary" },
-      { "index": 2, "heading": "Financial Highlights" },
-      { "index": 3, "heading": "Next Steps" }
-    ]
+    "stage": "authorization"
   }
 }
 ```
@@ -334,9 +281,12 @@ Validate a payload against a schema and return it unchanged.
 ```
 zenlix-echo-mcp/
 ├── index.ts              # Process entry point
+├── config/
+│   └── builtin-schemas.json # Built-in schema configuration
 ├── src/
 │   ├── server.ts         # MCP server assembly and tool registration
-│   ├── echo-service.ts   # Session-scoped registry and protocol behavior
+│   ├── echo-service.ts   # Built-in schema discovery and echo protocol behavior
+│   ├── builtin-schema-config.ts # Built-in schema config loader
 │   └── json-schema-zod.ts # JSON Schema to Zod conversion
 ├── tests/
 │   └── echo-service.test.ts  # Protocol and behavior tests

@@ -11,4 +11,4 @@ pnpm-debug.log*
 
 dist/
 
-.mcp-use/sessions.json
+.mcp-use/

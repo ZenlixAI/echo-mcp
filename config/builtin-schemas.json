@@ -1,0 +1,25 @@
+{
+  "schemas": [
+    {
+      "schema_id": "zenlix-agent-stage-v1",
+      "description": "Agent stage status event",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "stage": { "type": "string" },
+          "stage_status": {
+            "type": "string",
+            "enum": ["start", "running", "success", "failed"]
+          },
+          "next_stage": { "type": "string" },
+          "extra": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["stage"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

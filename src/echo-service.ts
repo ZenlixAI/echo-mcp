@@ -20,7 +20,6 @@ export type JsonValue =
 
 export type EchoErrorCode =
   | "INVALID_REQUEST"
-  | "SCHEMA_ALREADY_EXISTS"
   | "SCHEMA_NOT_FOUND"
   | "INVALID_SCHEMA_DEFINITION"
   | "SCHEMA_VALIDATION_FAILED"
@@ -49,13 +48,6 @@ export interface EchoSuccessResult<T = unknown> {
   payload: T;
 }
 
-export interface RegisterSchemaSuccessResult {
-  [key: string]: unknown;
-  ok: true;
-  schema_id: string;
-  description?: string;
-}
-
 export interface SchemaListResult {
   [key: string]: unknown;
   schemas: Array<{
@@ -73,14 +65,14 @@ export interface SchemaDetailResult {
   schema: JsonSchema | null;
 }
 
-export interface RegisterSchemaInput {
+export interface BuiltinSchemaConfig {
   schema_id: string;
   description?: string;
   schema: JsonSchema;
 }
 
-export interface GetSchemaInput {
-  schema_id: string;
+export interface EchoServiceOptions {
+  builtins?: BuiltinSchemaConfig[];
 }
 
 export interface EchoInput<T = unknown> {
@@ -94,59 +86,18 @@ interface SchemaRegistryEntry {
   builtin: boolean;
   schema: JsonSchema | null;
   validator: ZodType | null;
-  createdAt: string;
 }
 
 export class EchoService {
-  private readonly registries = new Map<string, Map<string, SchemaRegistryEntry>>();
+  private readonly schemaRegistry: Map<string, SchemaRegistryEntry>;
 
-  registerSchema(
-    sessionId: string,
-    input: RegisterSchemaInput,
-  ): RegisterSchemaSuccessResult | EchoErrorResult {
-    if (!input.schema_id) {
-      return this.invalidRequest("schema_id is required.");
-    }
-
-    const registry = this.getOrCreateRegistry(sessionId);
-    if (registry.has(input.schema_id)) {
-      return this.errorResult(
-        "SCHEMA_ALREADY_EXISTS",
-        `Schema '${input.schema_id}' already exists.`,
-        input.schema_id,
-      );
-    }
-
-    const compiled = compileJsonSchema(input.schema);
-    if (!compiled.ok) {
-      return this.errorResult(
-        "INVALID_SCHEMA_DEFINITION",
-        `Schema '${input.schema_id}' is not a valid JSON Schema.`,
-        input.schema_id,
-      );
-    }
-
-    registry.set(input.schema_id, {
-      schemaId: input.schema_id,
-      description: input.description,
-      builtin: false,
-      schema: input.schema,
-      validator: compiled.schema,
-      createdAt: new Date().toISOString(),
-    });
-
-    return {
-      ok: true,
-      schema_id: input.schema_id,
-      ...(input.description ? { description: input.description } : {}),
-    };
+  constructor(options: EchoServiceOptions = {}) {
+    this.schemaRegistry = this.buildRegistry(options.builtins ?? []);
   }
 
-  listSchemas(sessionId: string): SchemaListResult {
-    const registry = this.getOrCreateRegistry(sessionId);
-
+  listSchemas(_sessionId: string): SchemaListResult {
     return {
-      schemas: Array.from(registry.values()).map((entry) => ({
+      schemas: Array.from(this.schemaRegistry.values()).map((entry) => ({
         schema_id: entry.schemaId,
         ...(entry.description ? { description: entry.description } : {}),
         builtin: entry.builtin,
@@ -154,8 +105,8 @@ export class EchoService {
     };
   }
 
-  getSchema(sessionId: string, schemaId: string): SchemaDetailResult | EchoErrorResult {
-    const entry = this.getOrCreateRegistry(sessionId).get(schemaId);
+  getSchema(_sessionId: string, schemaId: string): SchemaDetailResult | EchoErrorResult {
+    const entry = this.schemaRegistry.get(schemaId);
 
     if (!entry) {
       return this.errorResult(
@@ -173,12 +124,14 @@ export class EchoService {
     };
   }
 
-  echo<T>(sessionId: string, input: EchoInput<T>): EchoSuccessResult<T> | EchoErrorResult {
+  echo<T>(_sessionId: string, input: EchoInput<T>): EchoSuccessResult<T> | EchoErrorResult {
     if (!input.schema_id) {
       return this.invalidRequest("schema_id is required.");
     }
 
-    const entry = this.getOrCreateRegistry(sessionId).get(input.schema_id);
+    const normalizedPayload = this.normalizePayload(input.payload);
+
+    const entry = this.schemaRegistry.get(input.schema_id);
     if (!entry) {
       return this.errorResult(
         "SCHEMA_NOT_FOUND",
@@ -191,7 +144,7 @@ export class EchoService {
       return {
         ok: true,
         schema_id: entry.schemaId,
-        payload: input.payload,
+        payload: normalizedPayload as T,
       };
     }
 
@@ -203,7 +156,7 @@ export class EchoService {
       );
     }
 
-    const parsed = entry.validator.safeParse(input.payload);
+    const parsed = entry.validator.safeParse(normalizedPayload);
     if (!parsed.success) {
       return {
         ok: false,
@@ -219,16 +172,23 @@ export class EchoService {
     return {
       ok: true,
       schema_id: entry.schemaId,
-      payload: input.payload,
+      payload: normalizedPayload as T,
     };
   }
 
-  private getOrCreateRegistry(sessionId: string): Map<string, SchemaRegistryEntry> {
-    const existing = this.registries.get(sessionId);
-    if (existing) {
-      return existing;
+  private normalizePayload(payload: unknown): unknown {
+    if (typeof payload !== "string") {
+      return payload;
     }
 
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return payload;
+    }
+  }
+
+  private buildRegistry(builtins: BuiltinSchemaConfig[]): Map<string, SchemaRegistryEntry> {
     const registry = new Map<string, SchemaRegistryEntry>();
     registry.set(SCHEMALESS_SCHEMA_ID, {
       schemaId: SCHEMALESS_SCHEMA_ID,
@@ -236,9 +196,33 @@ export class EchoService {
       builtin: true,
       schema: null,
       validator: null,
-      createdAt: new Date().toISOString(),
     });
-    this.registries.set(sessionId, registry);
+
+    for (const schemaDef of builtins) {
+      if (!schemaDef.schema_id) {
+        throw new Error("Built-in schema entry is missing schema_id.");
+      }
+      if (schemaDef.schema_id === SCHEMALESS_SCHEMA_ID) {
+        throw new Error(`Schema id '${SCHEMALESS_SCHEMA_ID}' is reserved.`);
+      }
+      if (registry.has(schemaDef.schema_id)) {
+        throw new Error(`Duplicate built-in schema id '${schemaDef.schema_id}'.`);
+      }
+
+      const compiled = compileJsonSchema(schemaDef.schema);
+      if (!compiled.ok) {
+        throw new Error(`Built-in schema '${schemaDef.schema_id}' is not a valid JSON Schema.`);
+      }
+
+      registry.set(schemaDef.schema_id, {
+        schemaId: schemaDef.schema_id,
+        ...(schemaDef.description ? { description: schemaDef.description } : {}),
+        builtin: true,
+        schema: schemaDef.schema,
+        validator: compiled.schema,
+      });
+    }
+
     return registry;
   }
 
@@ -260,5 +244,4 @@ export class EchoService {
       },
     };
   }
-
 }
