@@ -121,6 +121,12 @@ All errors return machine-readable error codes with detailed field-level informa
 
 ---
 
+## Quick Start (By Skill)
+
+```
+npx skills add https://github.com/ZenlixAI/echo-mcp --skill echo
+```
+
 ## Quick Start
 
 ### Installation
