@@ -1,8 +1,8 @@
 import { MCPServer, object } from "mcp-use/server";
 import { z } from "zod";
 
-import { EchoService } from "./echo-service";
-import { loadBuiltinSchemasFromConfig } from "./builtin-schema-config";
+import { EchoService } from "./echo-service.js";
+import { loadBuiltinSchemasFromConfig } from "./builtin-schema-config.js";
 
 const getSchemaInput = z.object({
   schema_id: z.string().min(1).describe("Schema identifier to fetch from the current session"),

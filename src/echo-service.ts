@@ -1,6 +1,6 @@
 import type { ZodType } from "zod";
 
-import { compileJsonSchema, mapZodIssues } from "./json-schema-zod";
+import { compileJsonSchema, mapZodIssues } from "./json-schema-zod.js";
 
 export const SCHEMALESS_SCHEMA_ID = "__schemaless__";
 export const SCHEMALESS_DESCRIPTION =

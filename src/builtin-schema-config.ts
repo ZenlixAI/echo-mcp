@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { BuiltinSchemaConfig, JsonSchema } from "./echo-service";
+import type { BuiltinSchemaConfig, JsonSchema } from "./echo-service.js";
 
 interface RawBuiltinSchemaConfig {
   schema_id?: unknown;

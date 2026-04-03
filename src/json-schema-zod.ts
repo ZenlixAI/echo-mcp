@@ -1,6 +1,6 @@
 import { z, type ZodIssue, type ZodType } from "zod";
 
-import type { ErrorDetail, JsonSchema } from "./echo-service";
+import type { ErrorDetail, JsonSchema } from "./echo-service.js";
 
 interface CompileSuccess {
   ok: true;
