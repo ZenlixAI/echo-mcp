@@ -23,9 +23,10 @@ export function createServer(service?: EchoService): MCPServer {
     name: "zenlix-echo-mcp",
     title: "Echo MCP",
     version: "1.0.0",
+    host: "0.0.0.0",
     description:
       "Config-driven built-in schema discovery and payload echo service for structured MCP tool returns",
-    baseUrl: process.env.MCP_URL || "http://localhost:3000",
+    baseUrl: process.env.MCP_URL || "http://0.0.0.0:3000",
     favicon: "favicon.ico",
     websiteUrl: "https://github.com/zenlix/echo-mcp",
     icons: [
