@@ -4,6 +4,9 @@ WORKDIR /app
 
 RUN corepack enable
 
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com/
+ENV PNPM_CONFIG_REGISTRY=https://registry.npmmirror.com/
+
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
@@ -16,6 +19,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com/
+ENV PNPM_CONFIG_REGISTRY=https://registry.npmmirror.com/
 
 RUN corepack enable
 
